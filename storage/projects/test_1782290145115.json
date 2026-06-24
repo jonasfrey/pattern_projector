@@ -1,5 +1,10 @@
 {
-  "pattern_1782289836200_xf2grg": {
+  "id": "test_1782290145115",
+  "name": "test",
+  "description": "test",
+  "tags": [],
+  "patternId": "pattern_1782289836200_xf2grg",
+  "pattern": {
     "id": "pattern_1782289836200_xf2grg",
     "name": "WBM Muscle Tank pattern A0.pdf",
     "format": "pdf",
@@ -9,13 +14,13 @@
     "scale": 0.929,
     "rotation": 2,
     "position": {
-      "x": -1237,
-      "y": 1315
+      "x": -1142,
+      "y": 1436
     },
     "calibration": {
       "referenceDistance": 10,
       "scaleFactor": 1,
-      "locked": false,
+      "locked": true,
       "accuracy": 0.5
     },
     "metadata": {
@@ -26,5 +31,19 @@
     },
     "file": "./storage/patterns/pattern_1782289836200_xf2grg_WBM_Muscle_Tank_pattern_A0.pdf",
     "created": "2026-06-24T08:30:36.392Z"
-  }
+  },
+  "settings": {
+    "grid": {
+      "enabled": false,
+      "size": 10
+    },
+    "overlay": {
+      "grid": false,
+      "gridSize": 10,
+      "showCalibLine": true,
+      "showLabels": true
+    }
+  },
+  "created": "2026-06-24T08:35:45.114Z",
+  "modified": "2026-06-24T08:35:45.114Z"
 }

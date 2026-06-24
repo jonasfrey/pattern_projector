@@ -122,10 +122,11 @@ const MAIN_TEMPLATE = `
 <div class="workspace">
   <div v-if="view.grid" class="grid-overlay" :style="gridStyle"></div>
 
-  <div class="stage">
-    <div v-if="pattern" class="pattern-host" :style="hostStyle">
+  <div class="stage" @wheel="onStageWheel">
+    <div v-if="pattern" class="pattern-host" :style="hostStyle"
+      @mousedown="startPatternDrag" @touchstart="startPatternDrag">
       <div v-if="patternMarkup" v-html="patternMarkup"></div>
-      <img v-else-if="patternImgUrl" :src="patternImgUrl" :width="pattern.width" :height="pattern.height" alt="pattern" />
+      <img v-else-if="patternImgUrl" :src="patternImgUrl" :width="pattern.width" :height="pattern.height" alt="pattern" draggable="false" />
     </div>
     <div v-else class="empty-hint">
       <div class="big">📐</div>
@@ -147,6 +148,13 @@ const MAIN_TEMPLATE = `
     <div class="calib-marker" :style="{left:(ruler.x2-7)+'px',top:(ruler.y2-7)+'px',width:'14px',height:'14px',borderRadius:'50%'}"
          @mousedown="startRulerDrag(2,$event)" @touchstart="startRulerDrag(2,$event)"></div>
   </template>
+
+  <!-- Controls legend -->
+  <div class="controls-hint">
+    <div><span class="key">Drag pattern</span>Move</div>
+    <div><span class="key">Shift + Scroll</span>Zoom</div>
+    <div><span class="key">Ctrl + Scroll</span>Rotate</div>
+  </div>
 
   <!-- Status HUD -->
   <div class="hud">
@@ -249,9 +257,13 @@ const MAIN_TEMPLATE = `
   <overlay-window v-if="overlays.controls" :ref="setRef('controls')" id="controls" title="Pattern Controls" icon="✏️"
     :initial="{x:60,y:160,w:330,h:460}" @close="toggle('controls')" @focus="focusOverlay">
     <div class="field">
-      <label>Zoom — {{ pattern ? Math.round(pattern.scale*100) : 100 }}%</label>
-      <input type="range" min="5" max="400" :value="pattern?pattern.scale*100:100"
-        :disabled="!pattern || locked" @input="setScale($event.target.value/100)" />
+      <label>Zoom — {{ pattern ? (pattern.scale*100).toFixed(1) : 100 }}%</label>
+      <div class="row">
+        <input type="range" min="5" max="400" step="0.1" :value="pattern?pattern.scale*100:100"
+          :disabled="!pattern || locked" @input="setScale($event.target.value/100)" />
+        <input type="number" step="0.1" class="num-input" :value="pattern?+(pattern.scale*100).toFixed(2):100"
+          :disabled="!pattern || locked" @change="setScale($event.target.value/100)" />
+      </div>
       <div class="row">
         <button @click="zoom(0.05)" :disabled="!pattern||locked">+</button>
         <button @click="zoom(-0.05)" :disabled="!pattern||locked">−</button>
@@ -260,9 +272,13 @@ const MAIN_TEMPLATE = `
       </div>
     </div>
     <div class="field">
-      <label>Rotation — {{ pattern ? Math.round(pattern.rotation) : 0 }}°</label>
-      <input type="range" min="-180" max="180" :value="pattern?pattern.rotation:0"
-        :disabled="!pattern" @input="setRotation($event.target.value)" />
+      <label>Rotation — {{ pattern ? pattern.rotation.toFixed(1) : 0 }}°</label>
+      <div class="row">
+        <input type="range" min="-180" max="180" step="0.1" :value="pattern?pattern.rotation:0"
+          :disabled="!pattern" @input="setRotation($event.target.value)" />
+        <input type="number" step="0.1" class="num-input" :value="pattern?+pattern.rotation.toFixed(1):0"
+          :disabled="!pattern" @change="setRotation($event.target.value)" />
+      </div>
       <div class="row">
         <button @click="rotate(-15)" :disabled="!pattern">↺ Left</button>
         <button @click="rotate(15)" :disabled="!pattern">↻ Right</button>
@@ -272,10 +288,14 @@ const MAIN_TEMPLATE = `
       <label>Position</label>
       <div class="row"><span style="flex:0 0 18px">X</span>
         <input type="range" min="-800" max="800" :value="pattern?pattern.position.x:0"
-          :disabled="!pattern" @input="setPos('x',$event.target.value)" /></div>
+          :disabled="!pattern" @input="setPos('x',$event.target.value)" />
+        <input type="number" step="1" class="num-input" :value="pattern?+pattern.position.x.toFixed(1):0"
+          :disabled="!pattern" @change="setPos('x',$event.target.value)" /></div>
       <div class="row"><span style="flex:0 0 18px">Y</span>
         <input type="range" min="-800" max="800" :value="pattern?pattern.position.y:0"
-          :disabled="!pattern" @input="setPos('y',$event.target.value)" /></div>
+          :disabled="!pattern" @input="setPos('y',$event.target.value)" />
+        <input type="number" step="1" class="num-input" :value="pattern?+pattern.position.y.toFixed(1):0"
+          :disabled="!pattern" @change="setPos('y',$event.target.value)" /></div>
       <div class="row">
         <button @click="centerPattern" :disabled="!pattern">Center</button>
       </div>
@@ -553,6 +573,50 @@ createApp({
       } catch (e) { notify(e.message, "error"); }
     }
 
+    /* ---- pattern drag (translate by drag-and-drop) ---- */
+    function startPatternDrag(e) {
+      if (!pattern.value) return;
+      e.preventDefault();
+      const t = e.touches ? e.touches[0] : e;
+      const startX = t.clientX, startY = t.clientY;
+      const origin = { x: pattern.value.position.x, y: pattern.value.position.y };
+      let moved = false;
+      const move = (ev) => {
+        const mt = ev.touches ? ev.touches[0] : ev;
+        moved = true;
+        pattern.value.position.x = origin.x + (mt.clientX - startX);
+        pattern.value.position.y = origin.y + (mt.clientY - startY);
+      };
+      const up = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+        window.removeEventListener("touchmove", move);
+        window.removeEventListener("touchend", up);
+        if (moved) pushTransform();
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      window.addEventListener("touchmove", move, { passive: false });
+      window.addEventListener("touchend", up);
+    }
+
+    /* ---- shift + scrollwheel zoom, ctrl + scrollwheel rotate ---- */
+    function onStageWheel(e) {
+      if (!pattern.value) return;
+      if (e.ctrlKey) {
+        // also fires for trackpad pinch-zoom gestures — prevent the page from zooming
+        e.preventDefault();
+        pattern.value.rotation = +(pattern.value.rotation + e.deltaY * 0.03).toFixed(2);
+        pushTransform();
+      } else if (e.shiftKey) {
+        if (locked.value) return;
+        e.preventDefault();
+        const factor = Math.exp(-e.deltaY * 0.0003);
+        pattern.value.scale = Math.max(0.05, +(pattern.value.scale * factor).toFixed(4));
+        pushTransform();
+      }
+    }
+
     /* ---- ruler drag ---- */
     function startRulerDrag(which, e) {
       e.preventDefault();
@@ -695,6 +759,7 @@ createApp({
       selectPattern, uploadFile, deletePattern,
       setScale, zoom, setRotation, rotate, setPos, centerPattern, resetAll, fitToScreen,
       runCalibration, applyReference, resetCalibration, toggleLock, startRulerDrag,
+      startPatternDrag, onStageWheel,
       saveProject, openProject, deleteProject, exportAs,
       clearLogs, exportLogs, fmtLog,
     };

@@ -83,6 +83,11 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .pattern-host {
   transform-origin: center center;
   will-change: transform;
+  cursor: grab;
+  user-select: none;
+}
+.pattern-host:active {
+  cursor: grabbing;
 }
 .pattern-host svg, .pattern-host img {
   display: block;
@@ -124,6 +129,28 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   pointer-events: none;
 }
 .hud .scale { color: var(--primary); font-weight: 600; }
+
+.controls-hint {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  background: rgba(22, 33, 62, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text-dim);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  z-index: 5;
+}
+.controls-hint .key {
+  display: inline-block;
+  min-width: 7.5rem;
+  color: var(--primary);
+  font-weight: 600;
+}
 .badge { padding: 0.1rem 0.5rem; border-radius: 10px; font-size: 0.75rem; }
 .badge.locked { background: var(--success); color: #042; }
 .badge.unlocked { background: var(--surface-2); color: var(--text-dim); }
@@ -194,6 +221,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .field input[type="range"] { width: 100%; }
 .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .row > * { flex: 1; }
+.row .num-input { flex: 0 0 4.5rem; width: 4.5rem; }
 
 .dropzone {
   border: 2px dashed var(--border);
