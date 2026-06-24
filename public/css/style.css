@@ -108,11 +108,25 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   opacity: 0.5;
 }
 
-/* Calibration line */
-.calib-line {
+/* Zoom anchor marker: crosshair showing the point zoom/rotate is locked to */
+.zoom-anchor-marker {
   position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border: 2px solid #00d4ff;
+  border-radius: 50%;
   pointer-events: none;
+  z-index: 4;
 }
+.zoom-anchor-marker::before, .zoom-anchor-marker::after {
+  content: "";
+  position: absolute;
+  background: #00d4ff;
+}
+.zoom-anchor-marker::before { left: 50%; top: -6px; width: 1px; height: 26px; transform: translateX(-50%); }
+.zoom-anchor-marker::after { top: 50%; left: -6px; height: 1px; width: 26px; transform: translateY(-50%); }
 
 /* Status HUD */
 .hud {
@@ -288,13 +302,6 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .radio-list label { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer; }
 
 .steps { margin: 0; padding-left: 1.1rem; font-size: 0.82rem; color: var(--text-dim); line-height: 1.6; }
-
-.calib-marker {
-  position: absolute;
-  background: var(--primary);
-  cursor: grab;
-}
-.calib-marker:active { cursor: grabbing; }
 
 .toast {
   position: fixed;

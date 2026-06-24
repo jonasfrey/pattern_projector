@@ -135,23 +135,13 @@ const MAIN_TEMPLATE = `
     </div>
   </div>
 
-  <!-- Calibration ruler -->
-  <svg v-if="view.showCalibLine && pattern" class="calib-line" style="inset:0;width:100%;height:100%">
-    <line :x1="ruler.x1" :y1="ruler.y1" :x2="ruler.x2" :y2="ruler.y2"
-          stroke="#00d4ff" stroke-width="2" stroke-dasharray="6 4" />
-    <text :x="(ruler.x1+ruler.x2)/2" :y="(ruler.y1+ruler.y2)/2 - 8" fill="#00d4ff"
-          font-size="13" text-anchor="middle">{{ calib.actual }}cm = {{ Math.round(rulerPx) }}px</text>
-  </svg>
-  <template v-if="view.showCalibLine && pattern">
-    <div class="calib-marker" :style="{left:(ruler.x1-7)+'px',top:(ruler.y1-7)+'px',width:'14px',height:'14px',borderRadius:'50%'}"
-         @mousedown="startRulerDrag(1,$event)" @touchstart="startRulerDrag(1,$event)"></div>
-    <div class="calib-marker" :style="{left:(ruler.x2-7)+'px',top:(ruler.y2-7)+'px',width:'14px',height:'14px',borderRadius:'50%'}"
-         @mousedown="startRulerDrag(2,$event)" @touchstart="startRulerDrag(2,$event)"></div>
-  </template>
+  <!-- Zoom anchor marker -->
+  <div v-if="zoomAnchor && pattern" class="zoom-anchor-marker" :style="anchorMarkerStyle"></div>
 
   <!-- Controls legend -->
   <div class="controls-hint">
     <div><span class="key">Drag pattern</span>Move</div>
+    <div><span class="key">Click pattern</span>Set zoom anchor</div>
     <div><span class="key">Shift + Scroll</span>Zoom</div>
     <div><span class="key">Ctrl + Scroll</span>Rotate</div>
   </div>
@@ -219,8 +209,9 @@ const MAIN_TEMPLATE = `
       </div>
     </div>
     <div class="field">
-      <label>Reference / Actual Distance (cm)</label>
+      <label>Projected Distance (px) / Actual Distance (cm)</label>
       <div class="row">
+        <input type="number" step="1" min="1" v-model.number="calib.projected" />
         <input type="number" step="0.1" min="0.1" v-model.number="calib.actual" />
         <select v-model.number="calib.tolerance">
           <option :value="0.5">±0.5 mm</option>
@@ -233,7 +224,7 @@ const MAIN_TEMPLATE = `
       <label>Calibration Process</label>
       <ol class="steps">
         <li>Place tape measure on table</li>
-        <li>Drag the two cyan markers to span that distance</li>
+        <li>Measure the projected pattern distance in pixels and enter it above</li>
         <li>Enter the real distance above</li>
         <li>Click Calibrate until distances match</li>
       </ol>
@@ -242,7 +233,7 @@ const MAIN_TEMPLATE = `
       <label>Current Calibration</label>
       <div class="info-box">
         <div><span class="k">Pattern Scale:</span> {{ scale.toFixed(3) }}x</div>
-        <div><span class="k">Measure line:</span> {{ Math.round(rulerPx) }}px</div>
+        <div><span class="k">Projected distance:</span> {{ calib.projected }}px</div>
         <div><span class="k">Accuracy:</span> ±{{ pattern.calibration.accuracy }}mm</div>
       </div>
     </div>
@@ -303,7 +294,6 @@ const MAIN_TEMPLATE = `
     <div class="field">
       <label>Display</label>
       <div class="toggle-row"><span>Grid overlay</span><input type="checkbox" v-model="view.grid"></div>
-      <div class="toggle-row"><span>Calibration line</span><input type="checkbox" v-model="view.showCalibLine"></div>
       <div class="toggle-row"><span>🔒 Lock calibration</span>
         <input type="checkbox" :checked="locked" @change="toggleLock($event.target.checked)"></div>
     </div>
@@ -385,12 +375,13 @@ createApp({
     const dragOver = ref(false);
     const toast = reactive({ show: false, msg: "", kind: "" });
 
-    const view = reactive({ grid: false, gridSize: 10, showCalibLine: true, showLabels: true });
-    const calib = reactive({ method: "tape", reference: 10, tolerance: 0.5, actual: 10 });
+    const view = reactive({ grid: false, gridSize: 10, showLabels: true });
+    const calib = reactive({ method: "tape", reference: 10, tolerance: 0.5, actual: 10, projected: 100 });
     const projectForm = reactive({ name: "", description: "", tags: "" });
 
-    // Calibration ruler endpoints (screen px within workspace)
-    const ruler = reactive({ x1: 200, y1: 300, x2: 400, y2: 300, active: false });
+    // Point on the pattern (local, unscaled/unrotated coords relative to its center)
+    // that stays fixed on screen while zooming/rotating.
+    const zoomAnchor = ref(null);
 
     const overlays = reactive({
       upload: false, calibrate: false, controls: false, project: false, logs: false,
@@ -409,7 +400,6 @@ createApp({
     const scale = computed(() => pattern.value ? pattern.value.scale : 1);
     const locked = computed(() => pattern.value ? pattern.value.calibration.locked : false);
     const calibrated = computed(() => pattern.value && pattern.value.calibration.scaleFactor !== 1);
-    const rulerPx = computed(() => Math.hypot(ruler.x2 - ruler.x1, ruler.y2 - ruler.y1));
     const hostStyle = computed(() => {
       const p = pattern.value;
       if (!p) return {};
@@ -430,6 +420,55 @@ createApp({
       };
     });
 
+    /* ---- zoom anchor: a point on the pattern that stays fixed on screen while zooming ---- */
+    function stageCenter() {
+      const el = document.querySelector(".stage");
+      const r = el ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+      return { left: r.left, top: r.top, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    function localFromClientPoint(clientX, clientY) {
+      const p = pattern.value;
+      const c = stageCenter();
+      const dx = clientX - c.x - p.position.x;
+      const dy = clientY - c.y - p.position.y;
+      const rad = -p.rotation * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      return { x: (dx * cos - dy * sin) / p.scale, y: (dx * sin + dy * cos) / p.scale };
+    }
+    function clientPointFromLocal(L) {
+      const p = pattern.value;
+      const c = stageCenter();
+      const rad = p.rotation * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      return {
+        x: c.x + p.position.x + (L.x * cos - L.y * sin) * p.scale,
+        y: c.y + p.position.y + (L.x * sin + L.y * cos) * p.scale,
+      };
+    }
+    const anchorMarkerStyle = computed(() => {
+      if (!zoomAnchor.value || !pattern.value) return { display: "none" };
+      const c = stageCenter();
+      const pt = clientPointFromLocal(zoomAnchor.value);
+      return { left: (pt.x - c.left) + "px", top: (pt.y - c.top) + "px" };
+    });
+    /** Change scale while keeping the zoom anchor (if set) fixed on screen. */
+    function applyScale(newScale) {
+      if (!pattern.value || locked.value) return;
+      const oldScale = pattern.value.scale;
+      const clamped = Math.max(0.05, +newScale.toFixed(4));
+      if (zoomAnchor.value) {
+        const L = zoomAnchor.value;
+        const rad = pattern.value.rotation * Math.PI / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const rx = L.x * cos - L.y * sin;
+        const ry = L.x * sin + L.y * cos;
+        pattern.value.position.x += rx * (oldScale - clamped);
+        pattern.value.position.y += ry * (oldScale - clamped);
+      }
+      pattern.value.scale = clamped;
+      pushTransform();
+    }
+
     /* ---- toast ---- */
     let toastTimer;
     function notify(msg, kind = "") {
@@ -446,6 +485,7 @@ createApp({
       pattern.value = p;
       patternMarkup.value = "";
       patternImgUrl.value = "";
+      zoomAnchor.value = null;
       if (p.format === "svg") {
         const res = await fetch(`/api/pattern/${p.id}/file`);
         let svg = await res.text();
@@ -499,18 +539,23 @@ createApp({
         }).catch(() => {});
       }, 250);
     }
-    function setScale(v) { if (locked.value) return; pattern.value.scale = +v; pushTransform(); }
+    function setScale(v) { applyScale(+v); }
     function zoom(delta) {
-      if (!pattern.value || locked.value) return;
-      pattern.value.scale = Math.max(0.05, +(pattern.value.scale + delta).toFixed(3));
-      pushTransform();
+      if (!pattern.value) return;
+      applyScale(pattern.value.scale + delta);
     }
     function setRotation(v) { if (!pattern.value) return; pattern.value.rotation = +v; pushTransform(); }
     function rotate(delta) { if (!pattern.value) return; pattern.value.rotation += delta; pushTransform(); }
     function setPos(axis, v) { if (!pattern.value) return; pattern.value.position[axis] = +v; pushTransform(); }
-    function centerPattern() { if (!pattern.value) return; pattern.value.position = { x: 0, y: 0 }; pushTransform(); }
+    function centerPattern() {
+      if (!pattern.value) return;
+      zoomAnchor.value = null;
+      pattern.value.position = { x: 0, y: 0 };
+      pushTransform();
+    }
     function resetAll() {
       if (!pattern.value) return;
+      zoomAnchor.value = null;
       pattern.value.scale = pattern.value.calibration.scaleFactor || 1;
       pattern.value.rotation = 0;
       pattern.value.position = { x: 0, y: 0 };
@@ -520,6 +565,7 @@ createApp({
       if (!pattern.value) return;
       const ws = document.querySelector(".workspace");
       if (!ws) return;
+      zoomAnchor.value = null;
       const sx = (ws.clientWidth * 0.9) / pattern.value.width;
       const sy = (ws.clientHeight * 0.9) / pattern.value.height;
       pattern.value.scale = +Math.min(sx, sy).toFixed(3);
@@ -531,10 +577,10 @@ createApp({
     async function runCalibration() {
       if (!pattern.value) { notify("Load a pattern first", "error"); return; }
       if (locked.value) { notify("Calibration is locked", "error"); return; }
-      const projectedDistance = rulerPx.value;
+      const projectedDistance = +calib.projected;
       const actualDistance = +calib.actual;
       if (projectedDistance <= 0 || actualDistance <= 0) {
-        notify("Set the measure line and a valid distance", "error"); return;
+        notify("Enter a valid projected and actual distance", "error"); return;
       }
       try {
         const { pattern: p, status } = await api.post(
@@ -573,7 +619,7 @@ createApp({
       } catch (e) { notify(e.message, "error"); }
     }
 
-    /* ---- pattern drag (translate by drag-and-drop) ---- */
+    /* ---- pattern drag (translate by drag-and-drop); a plain click sets the zoom anchor ---- */
     function startPatternDrag(e) {
       if (!pattern.value) return;
       e.preventDefault();
@@ -583,6 +629,7 @@ createApp({
       let moved = false;
       const move = (ev) => {
         const mt = ev.touches ? ev.touches[0] : ev;
+        if (!moved && Math.hypot(mt.clientX - startX, mt.clientY - startY) < 3) return;
         moved = true;
         pattern.value.position.x = origin.x + (mt.clientX - startX);
         pattern.value.position.y = origin.y + (mt.clientY - startY);
@@ -592,7 +639,11 @@ createApp({
         window.removeEventListener("mouseup", up);
         window.removeEventListener("touchmove", move);
         window.removeEventListener("touchend", up);
-        if (moved) pushTransform();
+        if (moved) {
+          pushTransform();
+        } else {
+          zoomAnchor.value = localFromClientPoint(startX, startY);
+        }
       };
       window.addEventListener("mousemove", move);
       window.addEventListener("mouseup", up);
@@ -612,30 +663,8 @@ createApp({
         if (locked.value) return;
         e.preventDefault();
         const factor = Math.exp(-e.deltaY * 0.0003);
-        pattern.value.scale = Math.max(0.05, +(pattern.value.scale * factor).toFixed(4));
-        pushTransform();
+        applyScale(pattern.value.scale * factor);
       }
-    }
-
-    /* ---- ruler drag ---- */
-    function startRulerDrag(which, e) {
-      e.preventDefault();
-      const move = (ev) => {
-        const t = ev.touches ? ev.touches[0] : ev;
-        const ws = document.querySelector(".workspace").getBoundingClientRect();
-        const x = t.clientX - ws.left, y = t.clientY - ws.top;
-        if (which === 1) { ruler.x1 = x; ruler.y1 = y; } else { ruler.x2 = x; ruler.y2 = y; }
-      };
-      const up = () => {
-        window.removeEventListener("mousemove", move);
-        window.removeEventListener("mouseup", up);
-        window.removeEventListener("touchmove", move);
-        window.removeEventListener("touchend", up);
-      };
-      window.addEventListener("mousemove", move);
-      window.addEventListener("mouseup", up);
-      window.addEventListener("touchmove", move, { passive: false });
-      window.addEventListener("touchend", up);
     }
 
     /* ---- projects ---- */
@@ -753,12 +782,12 @@ createApp({
 
     return {
       pattern, patternMarkup, patternImgUrl, recentPatterns, projects, logs,
-      wsConnected, logsPaused, dragOver, toast, view, calib, projectForm, ruler, rulerPx,
-      overlays, scale, locked, calibrated, hostStyle, gridStyle,
+      wsConnected, logsPaused, dragOver, toast, view, calib, projectForm,
+      overlays, scale, locked, calibrated, hostStyle, gridStyle, zoomAnchor, anchorMarkerStyle,
       toggle, focusOverlay, setRef,
       selectPattern, uploadFile, deletePattern,
       setScale, zoom, setRotation, rotate, setPos, centerPattern, resetAll, fitToScreen,
-      runCalibration, applyReference, resetCalibration, toggleLock, startRulerDrag,
+      runCalibration, applyReference, resetCalibration, toggleLock,
       startPatternDrag, onStageWheel,
       saveProject, openProject, deleteProject, exportAs,
       clearLogs, exportLogs, fmtLog,
