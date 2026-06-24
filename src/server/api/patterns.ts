@@ -13,6 +13,33 @@ import {
   storeUpload,
 } from "../../storage/files.ts";
 import { CalibrationManager } from "../../calibration/manager.ts";
+import type { PatternRegion } from "../../pattern/parser.ts";
+
+/** Keep only well-formed region entries; drop anything malformed rather than reject the whole request. */
+function sanitizeRegions(value: unknown): PatternRegion[] | null {
+  if (!Array.isArray(value)) return null;
+  const regions: PatternRegion[] = [];
+  for (const r of value) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (
+      typeof o.id === "string" && typeof o.name === "string" &&
+      typeof o.x === "number" && typeof o.y === "number" &&
+      typeof o.width === "number" && typeof o.height === "number"
+    ) {
+      regions.push({
+        id: o.id,
+        name: o.name,
+        x: o.x,
+        y: o.y,
+        width: o.width,
+        height: o.height,
+        zoom: typeof o.zoom === "number" ? o.zoom : 1,
+      });
+    }
+  }
+  return regions;
+}
 
 /** POST /api/pattern/upload  (multipart/form-data) */
 export async function uploadPattern(req: Request): Promise<Response> {
@@ -73,6 +100,8 @@ export async function updatePatternHandler(
     if (typeof pos.x === "number") p.position.x = pos.x;
     if (typeof pos.y === "number") p.position.y = pos.y;
   }
+  const regions = sanitizeRegions(body.regions);
+  if (regions) p.regions = regions;
   await savePattern(p);
   broadcast({
     type: "pattern",

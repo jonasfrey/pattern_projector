@@ -114,6 +114,9 @@ const MAIN_TEMPLATE = `
     <button :class="{active: locked}" @click="toggleLock()">{{ locked ? '🔒 Locked' : '🔓 Lock' }}</button>
     <button :class="{active: overlays.controls}" @click="toggle('controls')">✏️ Controls</button>
     <button :class="{active: overlays.project}" @click="toggle('project')">💾 Project</button>
+    <button :class="{active: overlays.regions}" @click="toggle('regions')">🔲 Regions</button>
+    <button :class="{active: overlays.persons}" @click="toggle('persons')">👤 Person</button>
+    <button :class="{active: overlays.sizeGuide}" @click="toggle('sizeGuide')">📏 Size Guide</button>
     <button :class="{active: overlays.logs}" @click="toggle('logs')">📊 Logs</button>
     <button @click="view.grid = !view.grid" :class="{active: view.grid}">▦ Grid</button>
   </div>
@@ -122,9 +125,10 @@ const MAIN_TEMPLATE = `
 <div class="workspace">
   <div v-if="view.grid" class="grid-overlay" :style="gridStyle"></div>
 
-  <div class="stage" @wheel="onStageWheel">
+  <div class="stage" :class="{'draw-mode': regionDrawMode}" @wheel="onStageWheel">
     <div v-if="pattern" class="pattern-host" :style="hostStyle"
-      @mousedown="startPatternDrag" @touchstart="startPatternDrag">
+      @mousedown="regionDrawMode ? startRegionDraw($event) : startPatternDrag($event)"
+      @touchstart="regionDrawMode ? startRegionDraw($event) : startPatternDrag($event)">
       <div v-if="patternMarkup" v-html="patternMarkup"></div>
       <img v-else-if="patternImgUrl" :src="patternImgUrl" :width="pattern.width" :height="pattern.height" alt="pattern" draggable="false" />
     </div>
@@ -135,15 +139,26 @@ const MAIN_TEMPLATE = `
     </div>
   </div>
 
+  <!-- Region outlines -->
+  <svg v-if="pattern && regions.length" class="region-outlines">
+    <polygon v-for="r in regions" :key="r.id" :points="regionScreenPoints(r)"
+      :class="{open: regionOpen[r.id]}" />
+  </svg>
+  <!-- Live rubber-band rectangle while drawing a new region -->
+  <div v-if="drawingRect" class="drawing-rect" :style="drawingRectStyle"></div>
+
   <!-- Zoom anchor marker -->
   <div v-if="zoomAnchor && pattern" class="zoom-anchor-marker" :style="anchorMarkerStyle"></div>
 
   <!-- Controls legend -->
   <div class="controls-hint">
-    <div><span class="key">Drag pattern</span>Move</div>
-    <div><span class="key">Click pattern</span>Set zoom anchor</div>
-    <div><span class="key">Shift + Scroll</span>Zoom</div>
-    <div><span class="key">Ctrl + Scroll</span>Rotate</div>
+    <div v-if="regionDrawMode"><span class="key">Drag on pattern</span>Draw region</div>
+    <template v-else>
+      <div><span class="key">Drag pattern</span>Move</div>
+      <div><span class="key">Click pattern</span>Set zoom anchor</div>
+      <div><span class="key">Shift + Scroll</span>Zoom</div>
+      <div><span class="key">Ctrl + Scroll</span>Rotate</div>
+    </template>
   </div>
 
   <!-- Status HUD -->
@@ -299,6 +314,55 @@ const MAIN_TEMPLATE = `
     </div>
   </overlay-window>
 
+  <!-- ===== Overlay: Regions ===== -->
+  <overlay-window v-if="overlays.regions" :ref="setRef('regions')" id="regions" title="Regions" icon="🔲"
+    :initial="{x:780,y:160,w:340,h:430}" @close="toggle('regions')" @focus="focusOverlay">
+    <div class="field">
+      <label>Pin a rectangle to the pattern — e.g. a printed calibration square or
+        small caption text — and keep it visible as its own zoomable overlay,
+        independent of the main view's pan/zoom/rotation.</label>
+      <button class="primary" :class="{active: regionDrawMode}" @click="toggleRegionDrawMode" :disabled="!pattern">
+        {{ regionDrawMode ? '✕ Cancel Drawing' : '🔲 Draw New Region' }}
+      </button>
+    </div>
+    <div class="field">
+      <label>Defined Regions</label>
+      <div class="list">
+        <div v-if="!regions.length" class="meta">No regions yet.</div>
+        <div v-for="r in regions" :key="r.id" class="list-item">
+          <div style="flex:1;min-width:0">
+            <input type="text" class="region-name" :value="r.name" @change="renameRegion(r.id, $event.target.value)" />
+            <div class="meta">{{ Math.round(r.width) }}×{{ Math.round(r.height) }}px @ ({{ Math.round(r.x) }},{{ Math.round(r.y) }})</div>
+          </div>
+          <div class="actions">
+            <button :class="{active: regionOpen[r.id]}" @click="toggleRegionOpen(r.id)">{{ regionOpen[r.id] ? '🔍 Hide' : '🔍 Show' }}</button>
+            <button class="danger" @click="deleteRegion(r.id)">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </overlay-window>
+
+  <!-- ===== Region magnifier overlays (one per shown region) ===== -->
+  <overlay-window v-for="r in regions.filter(rr => regionOpen[rr.id])" :key="'mag-'+r.id"
+    :ref="setRef('region-'+r.id)" :id="'region-'+r.id" :title="r.name" icon="🔍"
+    :initial="{x:80,y:520,w:260,h:240}" @close="toggleRegionOpen(r.id)" @focus="focusOverlay">
+    <div class="magnifier-body">
+      <div class="region-viewport" :ref="(el) => setRegionViewportEl(r.id, el)" @wheel="onRegionWheel(r, $event)">
+        <div :style="regionContentStyle(r)">
+          <div v-if="patternMarkup" v-html="patternMarkup"></div>
+          <img v-else-if="patternImgUrl" :src="patternImgUrl" :width="pattern.width" :height="pattern.height" alt="region" draggable="false" />
+        </div>
+      </div>
+      <div class="region-zoom-controls">
+        <button @click="zoomRegion(r, 0.8)">−</button>
+        <span>{{ (r.zoom*100).toFixed(0) }}%</span>
+        <button @click="zoomRegion(r, 1.25)">+</button>
+        <button @click="r.zoom=1; pushRegions()">Reset</button>
+      </div>
+    </div>
+  </overlay-window>
+
   <!-- ===== Overlay: Project ===== -->
   <overlay-window v-if="overlays.project" :ref="setRef('project')" id="project" title="Project Management" icon="💾"
     :initial="{x:420,y:160,w:340,h:470}" @close="toggle('project')" @focus="focusOverlay">
@@ -337,6 +401,119 @@ const MAIN_TEMPLATE = `
         <button @click="exportAs('svg')" :disabled="!pattern">📥 SVG</button>
         <button @click="exportAs('png')" :disabled="!pattern">📥 Image</button>
       </div>
+    </div>
+  </overlay-window>
+
+  <!-- ===== Overlay: Person ===== -->
+  <overlay-window v-if="overlays.persons" :ref="setRef('persons')" id="persons" title="Person" icon="👤"
+    :initial="{x:780,y:160,w:340,h:540}" @close="toggle('persons')" @focus="focusOverlay">
+    <div class="field">
+      <label>Name</label>
+      <input type="text" v-model="personForm.name" placeholder="e.g. Jonas" />
+    </div>
+    <div class="field">
+      <label>Body Measurements (cm)</label>
+      <div class="row">
+        <input type="number" min="0" step="0.5" v-model.number="personForm.height" placeholder="Height" />
+        <input type="number" min="0" step="0.5" v-model.number="personForm.chest" placeholder="Chest" />
+      </div>
+      <div class="row">
+        <input type="number" min="0" step="0.5" v-model.number="personForm.waist" placeholder="Waist" />
+        <input type="number" min="0" step="0.5" v-model.number="personForm.hip" placeholder="Hip" />
+      </div>
+      <div class="row">
+        <input type="number" min="0" step="0.5" v-model.number="personForm.shoulder" placeholder="Shoulder" />
+        <input type="number" min="0" step="0.5" v-model.number="personForm.sleeve" placeholder="Sleeve" />
+      </div>
+      <div class="row">
+        <input type="number" min="0" step="0.5" v-model.number="personForm.inseam" placeholder="Inseam" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <input type="text" v-model="personForm.notes" placeholder="optional" />
+    </div>
+    <div class="row">
+      <button class="primary" @click="savePersonForm">{{ personForm.id ? '💾 Update Person' : '➕ Add Person' }}</button>
+      <button v-if="personForm.id" @click="resetPersonForm">Cancel</button>
+    </div>
+    <div class="field" style="margin-top:.8rem">
+      <label>Saved People</label>
+      <div class="list">
+        <div v-if="!persons.length" class="meta">No people saved yet.</div>
+        <div v-for="p in persons" :key="p.id" class="list-item">
+          <div>
+            <div>{{ p.name }} <span v-if="activePersonId===p.id" class="meta">(active)</span></div>
+            <div class="meta">
+              <span v-if="p.measurements.chest">Chest {{ p.measurements.chest }}cm </span>
+              <span v-if="p.measurements.waist">Waist {{ p.measurements.waist }}cm </span>
+              <span v-if="p.measurements.hip">Hip {{ p.measurements.hip }}cm</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button :class="{active: activePersonId===p.id}" @click="setActivePerson(p.id)">Use</button>
+            <button @click="editPerson(p)">Edit</button>
+            <button class="danger" @click="deletePersonRecord(p.id)">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </overlay-window>
+
+  <!-- ===== Overlay: Size Guide ===== -->
+  <overlay-window v-if="overlays.sizeGuide" :ref="setRef('sizeGuide')" id="sizeGuide" title="Size Guide" icon="📏"
+    :initial="{x:420,y:300,w:380,h:520}" @close="toggle('sizeGuide')" @focus="focusOverlay">
+    <div class="field">
+      <label>Chart</label>
+      <div class="row">
+        <select v-model="sizeGuideCategory">
+          <option value="women">{{ sizeChart.women.label }}</option>
+          <option value="men">{{ sizeChart.men.label }}</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Your {{ activeSizeChart.measurement }} measurement (cm)</label>
+      <div class="row">
+        <input type="number" min="0" step="0.5" v-model.number="sizeGuideValue" placeholder="e.g. 100" />
+        <span v-if="activePerson" class="meta">from {{ activePerson.name }}</span>
+      </div>
+    </div>
+    <div class="field" v-if="sizeGuideValue">
+      <label>Result</label>
+      <div class="info-box">
+        <div v-if="sizeGuideMatch.exact">Pick <strong>{{ sizeGuideMatch.exact.label }}</strong></div>
+        <div v-else-if="sizeGuideMatch.below || sizeGuideMatch.above">
+          Between sizes — no exact match.
+          <div v-if="sizeGuideMatch.below"><span class="k">Closest below:</span> {{ sizeGuideMatch.below.label }}</div>
+          <div v-if="sizeGuideMatch.above"><span class="k">Closest above:</span> {{ sizeGuideMatch.above.label }}</div>
+          <div>Consider sizing up if between, or grading between sizes.</div>
+        </div>
+        <div v-else>No matching size in this chart.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Chart (cm) — edit to match your pattern's own size table</label>
+      <div class="list">
+        <div v-for="(r, i) in activeSizeChart.rows" :key="i" class="list-item size-row"
+          :class="{match: sizeGuideMatch.exact===r}">
+          <div style="flex:1;min-width:0">
+            <input type="text" class="region-name" :value="r.label" @change="r.label=$event.target.value; persistSizeChart()" />
+            <div class="row">
+              <input type="number" class="num-input" :value="r.min" @change="r.min=+$event.target.value; persistSizeChart()" />
+              <span class="meta">– cm –</span>
+              <input type="number" class="num-input" :value="r.max" @change="r.max=+$event.target.value; persistSizeChart()" />
+            </div>
+          </div>
+          <div class="actions">
+            <button class="danger" @click="deleteSizeRow(i)">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <button @click="addSizeRow">➕ Add Row</button>
+      <button @click="resetSizeChart">Reset to Default</button>
     </div>
   </overlay-window>
 
@@ -383,8 +560,96 @@ createApp({
     // that stays fixed on screen while zooming/rotating.
     const zoomAnchor = ref(null);
 
+    // Regions of interest pinned to the pattern's own (unscaled, unrotated) coordinate
+    // space, e.g. a calibration square or caption that should stay visible/legible
+    // regardless of the main view's pan/zoom/rotation.
+    const regions = ref([]);
+    const regionDrawMode = ref(false);
+    const drawingRect = ref(null); // {x1,y1,x2,y2} in stage-relative screen px while dragging
+    const regionOpen = reactive({}); // regionId -> bool, persisted to localStorage
+    const regionViewportSize = reactive({}); // regionId -> {w,h} of its magnifier viewport
+    const regionObservers = {}; // regionId -> ResizeObserver (not reactive)
+
+    const persons = ref([]);
+    const personForm = reactive({
+      id: null, name: "", height: "", chest: "", waist: "", hip: "", inseam: "", shoulder: "", sleeve: "", notes: "",
+    });
+
+    /* ---- size guide: cross-reference a body measurement against EU/US size charts ---- */
+    const SIZE_CHART_DEFAULTS = {
+      women: {
+        label: "Women's Tops (Bust)",
+        measurement: "chest",
+        rows: [
+          { label: "US 0 / EU 32", min: 78, max: 80 },
+          { label: "US 2 / EU 34", min: 81, max: 83 },
+          { label: "US 4 / EU 36", min: 84, max: 86 },
+          { label: "US 6 / EU 38", min: 87, max: 89 },
+          { label: "US 8 / EU 40", min: 90, max: 93 },
+          { label: "US 10 / EU 42", min: 94, max: 97 },
+          { label: "US 12 / EU 44", min: 98, max: 101 },
+          { label: "US 14 / EU 46", min: 102, max: 105 },
+          { label: "US 16 / EU 48", min: 106, max: 110 },
+          { label: "US 18 / EU 50", min: 111, max: 115 },
+          { label: "US 20 / EU 52", min: 116, max: 120 },
+        ],
+      },
+      men: {
+        label: "Men's Tops (Chest)",
+        measurement: "chest",
+        rows: [
+          { label: "US 36 / EU 46", min: 91, max: 94 },
+          { label: "US 38 / EU 48", min: 95, max: 98 },
+          { label: "US 40 / EU 50", min: 99, max: 102 },
+          { label: "US 42 / EU 52", min: 103, max: 106 },
+          { label: "US 44 / EU 54", min: 107, max: 111 },
+          { label: "US 46 / EU 56", min: 112, max: 116 },
+        ],
+      },
+    };
+    const sizeGuideCategory = ref("women");
+    const sizeGuideValue = ref("");
+    function loadSizeChart(cat) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`sizeChart:${cat}`) || "null");
+        if (saved && Array.isArray(saved.rows)) return saved;
+      } catch (e) { /* fall back to defaults */ }
+      return JSON.parse(JSON.stringify(SIZE_CHART_DEFAULTS[cat]));
+    }
+    const sizeChart = reactive({
+      women: loadSizeChart("women"),
+      men: loadSizeChart("men"),
+    });
+    function persistSizeChart() {
+      localStorage.setItem(`sizeChart:${sizeGuideCategory.value}`, JSON.stringify(sizeChart[sizeGuideCategory.value]));
+    }
+    function resetSizeChart() {
+      sizeChart[sizeGuideCategory.value] = JSON.parse(JSON.stringify(SIZE_CHART_DEFAULTS[sizeGuideCategory.value]));
+      persistSizeChart();
+    }
+    function addSizeRow() {
+      sizeChart[sizeGuideCategory.value].rows.push({ label: "New size", min: 0, max: 0 });
+      persistSizeChart();
+    }
+    function deleteSizeRow(i) {
+      sizeChart[sizeGuideCategory.value].rows.splice(i, 1);
+      persistSizeChart();
+    }
+    const activeSizeChart = computed(() => sizeChart[sizeGuideCategory.value]);
+    const sizeGuideMatch = computed(() => {
+      const v = +sizeGuideValue.value;
+      const rows = activeSizeChart.value.rows;
+      if (!v || !rows.length) return { exact: null, below: null, above: null };
+      const exact = rows.find((r) => v >= r.min && v <= r.max);
+      if (exact) return { exact, below: null, above: null };
+      const sorted = [...rows].sort((a, b) => a.min - b.min);
+      const below = [...sorted].reverse().find((r) => r.max < v) || null;
+      const above = sorted.find((r) => r.min > v) || null;
+      return { exact: null, below, above };
+    });
     const overlays = reactive({
       upload: false, calibrate: false, controls: false, project: false, logs: false,
+      regions: false, persons: false, sizeGuide: false,
     });
     let zCounter = 20;
     const focusOverlay = (id) => {
@@ -469,6 +734,28 @@ createApp({
       pushTransform();
     }
 
+    /* ---- regions: rectangles pinned to the pattern's own (top-left origin) coordinate space ---- */
+    function topLeftFromClientPoint(clientX, clientY) {
+      const p = pattern.value;
+      const c = localFromClientPoint(clientX, clientY);
+      return { x: c.x + p.width / 2, y: c.y + p.height / 2 };
+    }
+    function regionScreenPoints(region) {
+      const p = pattern.value;
+      const c = stageCenter();
+      const corners = [
+        { x: region.x, y: region.y },
+        { x: region.x + region.width, y: region.y },
+        { x: region.x + region.width, y: region.y + region.height },
+        { x: region.x, y: region.y + region.height },
+      ];
+      return corners.map((pt) => {
+        const local = { x: pt.x - p.width / 2, y: pt.y - p.height / 2 };
+        const screen = clientPointFromLocal(local);
+        return `${screen.x - c.left},${screen.y - c.top}`;
+      }).join(" ");
+    }
+
     /* ---- toast ---- */
     let toastTimer;
     function notify(msg, kind = "") {
@@ -486,6 +773,12 @@ createApp({
       patternMarkup.value = "";
       patternImgUrl.value = "";
       zoomAnchor.value = null;
+      regionDrawMode.value = false;
+      drawingRect.value = null;
+      regions.value = p.regions || [];
+      for (const r of regions.value) {
+        regionOpen[r.id] = localStorage.getItem(`regionOpen:${r.id}`) === "1";
+      }
       if (p.format === "svg") {
         const res = await fetch(`/api/pattern/${p.id}/file`);
         let svg = await res.text();
@@ -539,6 +832,118 @@ createApp({
         }).catch(() => {});
       }, 250);
     }
+    let regionSaveTimer;
+    function pushRegions() {
+      if (!pattern.value) return;
+      clearTimeout(regionSaveTimer);
+      const p = pattern.value;
+      regionSaveTimer = setTimeout(() => {
+        api.put(`/api/pattern/${p.id}`, { regions: regions.value }).catch(() => {});
+      }, 250);
+    }
+    function toggleRegionDrawMode() {
+      regionDrawMode.value = !regionDrawMode.value;
+      drawingRect.value = null;
+    }
+    function startRegionDraw(e) {
+      if (!pattern.value) return;
+      e.preventDefault();
+      const t = e.touches ? e.touches[0] : e;
+      const c = stageCenter();
+      const startX = t.clientX, startY = t.clientY;
+      drawingRect.value = { x1: startX - c.left, y1: startY - c.top, x2: startX - c.left, y2: startY - c.top };
+      const move = (ev) => {
+        const mt = ev.touches ? ev.touches[0] : ev;
+        drawingRect.value = { x1: startX - c.left, y1: startY - c.top, x2: mt.clientX - c.left, y2: mt.clientY - c.top };
+      };
+      const up = (ev) => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+        window.removeEventListener("touchmove", move);
+        window.removeEventListener("touchend", up);
+        const mt = ev.changedTouches ? ev.changedTouches[0] : ev;
+        drawingRect.value = null;
+        if (Math.hypot(mt.clientX - startX, mt.clientY - startY) < 6) return; // ignore accidental clicks
+        const a = topLeftFromClientPoint(startX, startY);
+        const b = topLeftFromClientPoint(mt.clientX, mt.clientY);
+        const width = Math.abs(b.x - a.x), height = Math.abs(b.y - a.y);
+        if (width < 4 || height < 4) return; // too thin to be a usable region
+        const region = {
+          id: `region_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: `Region ${regions.value.length + 1}`,
+          x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+          width, height,
+          zoom: 1,
+        };
+        regions.value = [...regions.value, region];
+        pushRegions();
+        notify(`Added ${region.name}`, "success");
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      window.addEventListener("touchmove", move, { passive: false });
+      window.addEventListener("touchend", up);
+    }
+    const drawingRectStyle = computed(() => {
+      const r = drawingRect.value;
+      if (!r) return { display: "none" };
+      return {
+        left: Math.min(r.x1, r.x2) + "px", top: Math.min(r.y1, r.y2) + "px",
+        width: Math.abs(r.x2 - r.x1) + "px", height: Math.abs(r.y2 - r.y1) + "px",
+      };
+    });
+    function renameRegion(id, name) {
+      const r = regions.value.find((r) => r.id === id);
+      if (!r) return;
+      r.name = name;
+      pushRegions();
+    }
+    function deleteRegion(id) {
+      regions.value = regions.value.filter((r) => r.id !== id);
+      delete regionOpen[id];
+      localStorage.removeItem(`regionOpen:${id}`);
+      pushRegions();
+    }
+    function toggleRegionOpen(id) {
+      regionOpen[id] = !regionOpen[id];
+      localStorage.setItem(`regionOpen:${id}`, regionOpen[id] ? "1" : "0");
+    }
+    function zoomRegion(region, factor) {
+      region.zoom = Math.max(0.25, Math.min(12, +(region.zoom * factor).toFixed(3)));
+      pushRegions();
+    }
+    function onRegionWheel(region, e) {
+      e.preventDefault();
+      zoomRegion(region, Math.exp(-e.deltaY * 0.0015));
+    }
+    /** Track the magnifier viewport's size so its content can be scaled/cropped to fit. */
+    function setRegionViewportEl(id, el) {
+      if (!el || regionObservers[id]) return;
+      regionViewportSize[id] = { w: el.clientWidth, h: el.clientHeight };
+      const ro = new ResizeObserver((entries) => {
+        const r = entries[0].contentRect;
+        regionViewportSize[id] = { w: r.width, h: r.height };
+      });
+      ro.observe(el);
+      regionObservers[id] = ro;
+    }
+    /** Crop+zoom the full pattern content so just `region` fills its magnifier viewport. */
+    function regionContentStyle(region) {
+      const p = pattern.value;
+      const size = regionViewportSize[region.id] || { w: 200, h: 200 };
+      if (!p || !region.width || !region.height) return {};
+      const fit = Math.min(size.w / region.width, size.h / region.height) || 1;
+      const s = fit * (region.zoom || 1);
+      const tx = size.w / 2 - (region.x + region.width / 2) * s;
+      const ty = size.h / 2 - (region.y + region.height / 2) * s;
+      return {
+        position: "absolute", left: "0", top: "0",
+        width: p.width + "px", height: p.height + "px",
+        transformOrigin: "0 0",
+        transform: `translate(${tx}px, ${ty}px) scale(${s})`,
+      };
+    }
+
     function setScale(v) { applyScale(+v); }
     function zoom(delta) {
       if (!pattern.value) return;
@@ -667,6 +1072,56 @@ createApp({
       }
     }
 
+    /* ---- persons ---- */
+    const MEASUREMENT_FIELDS = ["height", "chest", "waist", "hip", "inseam", "shoulder", "sleeve"];
+    async function loadPersons() {
+      try { persons.value = await api.get("/api/person/list"); } catch (e) { /* */ }
+    }
+    function resetPersonForm() {
+      personForm.id = null;
+      personForm.name = "";
+      personForm.notes = "";
+      for (const f of MEASUREMENT_FIELDS) personForm[f] = "";
+    }
+    function editPerson(p) {
+      personForm.id = p.id;
+      personForm.name = p.name;
+      personForm.notes = p.notes || "";
+      for (const f of MEASUREMENT_FIELDS) personForm[f] = p.measurements?.[f] ?? "";
+    }
+    async function savePersonForm() {
+      if (!personForm.name.trim()) { notify("Enter a name", "error"); return; }
+      const measurements = {};
+      for (const f of MEASUREMENT_FIELDS) {
+        if (personForm[f] !== "" && personForm[f] != null) measurements[f] = +personForm[f];
+      }
+      const payload = { name: personForm.name.trim(), notes: personForm.notes, measurements };
+      try {
+        const saved = personForm.id
+          ? await api.put(`/api/person/${personForm.id}`, payload)
+          : await api.post("/api/person", payload);
+        await loadPersons();
+        resetPersonForm();
+        notify(`Saved ${saved.name}`, "success");
+      } catch (e) { notify(e.message, "error"); }
+    }
+    async function deletePersonRecord(id) {
+      try {
+        await api.del(`/api/person/${id}`);
+        if (personForm.id === id) resetPersonForm();
+        if (activePersonId.value === id) activePersonId.value = null;
+        await loadPersons();
+      } catch (e) { notify(e.message, "error"); }
+    }
+    const activePersonId = ref(null);
+    const activePerson = computed(() => persons.value.find((p) => p.id === activePersonId.value) || null);
+    function setActivePerson(id) { activePersonId.value = activePersonId.value === id ? null : id; }
+    watch(activePerson, (p) => {
+      if (p && p.measurements && p.measurements[activeSizeChart.value.measurement] != null) {
+        sizeGuideValue.value = p.measurements[activeSizeChart.value.measurement];
+      }
+    });
+
     /* ---- projects ---- */
     async function loadProjects() {
       try { projects.value = await api.get("/api/project/list"); } catch (e) { /* */ }
@@ -775,7 +1230,7 @@ createApp({
 
     /* ---- lifecycle ---- */
     onMounted(async () => {
-      await Promise.all([loadRecent(), loadProjects(), loadLogHistory()]);
+      await Promise.all([loadRecent(), loadProjects(), loadLogHistory(), loadPersons()]);
       connectWS();
       window.addEventListener("keydown", onKey);
     });
@@ -789,6 +1244,14 @@ createApp({
       setScale, zoom, setRotation, rotate, setPos, centerPattern, resetAll, fitToScreen,
       runCalibration, applyReference, resetCalibration, toggleLock,
       startPatternDrag, onStageWheel,
+      regions, regionDrawMode, drawingRect, drawingRectStyle, regionOpen,
+      regionScreenPoints, toggleRegionDrawMode, startRegionDraw,
+      renameRegion, deleteRegion, toggleRegionOpen, zoomRegion, onRegionWheel,
+      setRegionViewportEl, regionContentStyle, pushRegions,
+      persons, personForm, activePersonId, activePerson,
+      resetPersonForm, editPerson, savePersonForm, deletePersonRecord, setActivePerson,
+      sizeChart, sizeGuideCategory, sizeGuideValue, activeSizeChart, sizeGuideMatch,
+      persistSizeChart, resetSizeChart, addSizeRow, deleteSizeRow,
       saveProject, openProject, deleteProject, exportAs,
       clearLogs, exportLogs, fmtLog,
     };

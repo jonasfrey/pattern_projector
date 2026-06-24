@@ -2,6 +2,19 @@
 
 import { config, type SupportedFormat } from "../server/config.ts";
 
+/** A user-defined rectangular area of interest within a pattern's own
+ * (unscaled, unrotated) coordinate space, e.g. a calibration square or a
+ * caption the user wants to keep visible regardless of the main view. */
+export interface PatternRegion {
+  id: string;
+  name: string;
+  x: number; // px, in pattern-local space (top-left origin)
+  y: number; // px
+  width: number; // px
+  height: number; // px
+  zoom: number; // extra magnification applied inside the region's own overlay
+}
+
 export interface PatternData {
   id: string;
   name: string;
@@ -24,6 +37,7 @@ export interface PatternData {
     physicalWidth: number; // cm
     physicalHeight: number; // cm
   };
+  regions?: PatternRegion[];
   /** Relative path to the stored file (server-side). */
   file: string;
   created: string;

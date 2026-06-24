@@ -6,11 +6,11 @@
     "size": 604900,
     "width": 3179,
     "height": 4494,
-    "scale": 0.8339,
-    "rotation": 2,
+    "scale": 3.7825,
+    "rotation": 5.6,
     "position": {
-      "x": -771.0271513720147,
-      "y": 996.9010366285623
+      "x": -1125.3926442836892,
+      "y": 6283.924066295138
     },
     "calibration": {
       "referenceDistance": 10,
@@ -25,6 +25,7 @@
       "physicalHeight": 0
     },
     "file": "./storage/patterns/pattern_1782289836200_xf2grg_WBM_Muscle_Tank_pattern_A0.pdf",
-    "created": "2026-06-24T08:30:36.392Z"
+    "created": "2026-06-24T08:30:36.392Z",
+    "regions": []
   }
 }

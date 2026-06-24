@@ -5,13 +5,16 @@ import { extname, normalize } from "std/path/mod.ts";
 import { config } from "./src/server/config.ts";
 import { logger } from "./src/utils/logger.ts";
 import { initStorage } from "./src/storage/files.ts";
+import { initPersonsStorage } from "./src/storage/persons.ts";
 import { handleWebSocket } from "./src/server/websocket.ts";
 import { error } from "./src/server/http.ts";
 import * as patterns from "./src/server/api/patterns.ts";
 import * as projects from "./src/server/api/projects.ts";
+import * as persons from "./src/server/api/persons.ts";
 import * as logs from "./src/server/api/logs.ts";
 
 await initStorage();
+await initPersonsStorage();
 
 /** Serve a static asset from the public directory (path-traversal safe). */
 async function serveStatic(pathname: string): Promise<Response> {
@@ -79,6 +82,22 @@ async function handleApi(
       if (sub === "lock" && method === "POST") {
         return await patterns.lockPatternHandler(id, req);
       }
+    }
+  }
+
+  // ---- Person routes ----
+  if (parts[1] === "person") {
+    if (parts[2] === "list" && method === "GET") {
+      return persons.listPersonsHandler();
+    }
+    if (!parts[2] && method === "POST") {
+      return await persons.createPersonHandler(req);
+    }
+    const id = parts[2];
+    if (id) {
+      if (method === "GET") return persons.getPersonHandler(id);
+      if (method === "PUT") return await persons.updatePersonHandler(id, req);
+      if (method === "DELETE") return await persons.deletePersonHandler(id);
     }
   }
 

@@ -128,6 +128,7 @@ export async function storeUpload(
       physicalWidth: 0,
       physicalHeight: 0,
     },
+    regions: [],
     file: storedPath,
     created: new Date().toISOString(),
   };
