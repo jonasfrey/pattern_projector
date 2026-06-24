@@ -1,0 +1,94 @@
+# =============================================================================
+# Isolated Claude Code environment for generic
+#
+# What this does:
+#   - The entire workspace is bind-mounted into the container.
+#   - You edit files on the host with VS Code (or any editor).
+#   - Changes are instantly visible inside the container — no sync tooling needed.
+#   - Claude Code runs inside the container and CANNOT touch files outside
+#     the mounted workspace or harm the host OS.
+#
+# Usage:
+#   docker compose up -d              # Start the container (detached)
+#   ./enter-claude.sh                 # Enter container and run Claude Code
+#   docker compose down               # Stop the container
+#   docker compose build --build-arg HOST_UID=$(id -u) --build-arg HOST_GID=$(id -g)
+# =============================================================================
+
+services:
+  generic:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    image: generic:dev
+    container_name: generic-isolated2
+    hostname: generic
+    # Make stdin interactive (needed for Claude Code's TUI)
+    stdin_open: true
+    tty: true
+    ports:
+      - "8080:8080"
+    volumes:
+      # Bind-mount the entire workspace — real-time bidirectional sync.
+      # Edit on the host, changes appear instantly in the container.
+      - .:/workspace:cached
+      # Mount host /dev for USB camera access
+      - /dev:/dev:ro
+    devices:
+      # Pass through video devices for USB cameras
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
+      - /dev/video4:/dev/video4
+      - /dev/video5:/dev/video5
+      - /dev/video6:/dev/video6
+      - /dev/video7:/dev/video7
+    privileged: true  # Required for USB/device access
+    environment:
+      # Pass through terminal capabilities for Claude Code's TUI
+      - TERM=${TERM:-xterm-256color}
+      # Claude Code looks for this
+      - HOME=/home/developer
+    # If you need GPU access for VitPose inference, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - isolated-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Template Projector Application Service
+  # -------------------------------------------------------------------
+  pattern-projector:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: pattern-projector
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./storage:/app/storage
+      - ./public:/app/public
+      - ./src:/app/src
+      - ./main.ts:/app/main.ts
+      - ./deno.json:/app/deno.json
+    environment:
+      - DENO_ENV=production
+      - STORAGE_PATH=/app/storage
+      - PATTERN_PATH=/app/storage/patterns
+      - PROJECT_PATH=/app/storage/projects
+    restart: unless-stopped
+    networks:
+      - isolated-net
+
+networks:
+  isolated-net:
+    driver: bridge

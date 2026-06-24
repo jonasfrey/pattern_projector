@@ -1,0 +1,30 @@
+{
+  "pattern_1781906934457_eyjzu7": {
+    "id": "pattern_1781906934457_eyjzu7",
+    "name": "freesewing-aaron.svg",
+    "format": "svg",
+    "size": 171211,
+    "width": 2327,
+    "height": 1953,
+    "scale": 0.581,
+    "rotation": -1,
+    "position": {
+      "x": -234,
+      "y": 16
+    },
+    "calibration": {
+      "referenceDistance": 10,
+      "scaleFactor": 1,
+      "locked": true,
+      "accuracy": 0.5
+    },
+    "metadata": {
+      "originalWidth": 2327,
+      "originalHeight": 1953,
+      "physicalWidth": 0,
+      "physicalHeight": 0
+    },
+    "file": "./storage/patterns/pattern_1781906934457_eyjzu7_freesewing-aaron.svg",
+    "created": "2026-06-19T22:08:54.458Z"
+  }
+}

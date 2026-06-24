@@ -1,0 +1,49 @@
+{
+  "id": "asdfasdf_1781907009643",
+  "name": "asdfasdf",
+  "description": "",
+  "tags": [],
+  "patternId": "pattern_1781906934457_eyjzu7",
+  "pattern": {
+    "id": "pattern_1781906934457_eyjzu7",
+    "name": "freesewing-aaron.svg",
+    "format": "svg",
+    "size": 171211,
+    "width": 2327,
+    "height": 1953,
+    "scale": 0.581,
+    "rotation": -1,
+    "position": {
+      "x": -234,
+      "y": 16
+    },
+    "calibration": {
+      "referenceDistance": 10,
+      "scaleFactor": 1,
+      "locked": true,
+      "accuracy": 0.5
+    },
+    "metadata": {
+      "originalWidth": 2327,
+      "originalHeight": 1953,
+      "physicalWidth": 0,
+      "physicalHeight": 0
+    },
+    "file": "./storage/patterns/pattern_1781906934457_eyjzu7_freesewing-aaron.svg",
+    "created": "2026-06-19T22:08:54.458Z"
+  },
+  "settings": {
+    "grid": {
+      "enabled": true,
+      "size": 10
+    },
+    "overlay": {
+      "grid": true,
+      "gridSize": 10,
+      "showCalibLine": true,
+      "showLabels": true
+    }
+  },
+  "created": "2026-06-19T22:10:09.643Z",
+  "modified": "2026-06-19T22:10:09.643Z"
+}

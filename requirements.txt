@@ -1,0 +1,888 @@
+Template Projector Application - Complete Technical Requirements
+📋 Project Overview
+A production-ready, single-page web application that projects sewing patterns onto a table surface using a ceiling-mounted projector. Users can upload vector sewing patterns, calibrate the projection size using a physical tape measure, and lock the calibration for accurate pattern tracing. Built with Deno.js backend and vue js frontend.
+
+🎯 Core Requirements
+1. Application Purpose
+Primary Goal: Project sewing patterns from a ceiling-mounted projector onto a table
+
+Key Functionality: Calibrate projection size to match physical measurements
+
+Workflow: Upload pattern → Display on table → Calibrate with tape measure → Lock calibration → Trace pattern
+
+2. Architecture
+Backend (Deno.js)
+Deno.js serves as the main application server
+
+File upload and management
+
+Project state storage (JSON)
+
+SVG/PDF vector processing
+
+WebSocket for real-time updates
+
+HTTP/2 for static assets and API endpoints
+
+Frontend (vue js)
+Single Page Application (SPA)
+
+vue js for reactive UI components
+
+Canvas/SVG rendering for pattern display
+
+Vanilla CSS with CSS Grid/Flexbox for layout
+
+Drag and drop for file upload
+
+🖥️ User Interface Requirements
+Main Layout
+Primary View - Projection Workspace
+text
++--------------------------------------------------+
+|  📐 Template Projector v1.0                       |
+|  [📁 Load Pattern] [⚙️ Calibrate] [🔒 Lock]     |
+|  [💾 Save Project] [📂 Load Project]             |
++--------------------------------------------------+
+|                                                    |
+|  +--------------------------------------------+    |
+|  |                                            |    |
+|  |          PROJECTION AREA                    |    |
+|  |         (Canvas/SVG Render)                |    |
+|  |                                            |    |
+|  |   ┌──────────────┐                        |    |
+|  |   │   Pattern     │                        |    |
+|  |   │   Display     │                        |    |
+|  |   │   10cm ──────▶│  ← Calibration Line  |    |
+|  |   └──────────────┘                        |    |
+|  |                                            |    |
+|  |   Status: Calibrated ✅                    |    |
+|  |   Scale: 1.25x                            |    |
+|  +--------------------------------------------+    |
+|                                                    |
+|  Toolbar: [Zoom In] [Zoom Out] [Reset] [Lock]    |
+|  Info: Pattern: dress_pattern.svg | Size: A4     |
++--------------------------------------------------+
+Workspace Features:
+
+Full-screen projection area (dark background)
+
+Pattern rendered at actual size (calibrated)
+
+Calibration measurement line overlay (10cm default)
+
+Scale indicator
+
+Grid overlay option (for alignment)
+
+Lock status indicator
+
+Togglable Overlay Windows
+All overlay windows are:
+
+Movable (drag by title bar)
+
+Resizable (drag corners/edges)
+
+Toggleable (show/hide via buttons)
+
+Z-index managed (click to bring forward)
+
+Persistent state (position/size remembered in localStorage)
+
+Overlay 1: Pattern Upload
+text
++------------------------------------------+
+| 📁 Load Pattern                  [✕]    |
++------------------------------------------+
+|  Upload Pattern File                      |
+|  ┌─────────────────────────────────┐     |
+|  │  Drag & Drop or Click to Upload │     |
+|  │  Supported: SVG, PDF, DXF, AI   │     |
+|  │  Max Size: 50MB                 │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Recently Used Patterns                   |
+|  ┌─────────────────────────────────┐     |
+|  │ dress_pattern.svg     [Load]   │     |
+|  │ shirt_pattern.svg     [Load]   │     |
+|  │ pants_pattern.pdf     [Load]   │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Pattern Information                      |
+|  ┌─────────────────────────────────┐     |
+|  │ Name: dress_pattern.svg        │     |
+|  │ Size: 2.4 MB                   │     |
+|  │ Dimensions: 1200x800px         │     |
+|  │ Format: SVG                    │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  [Load Pattern] [Cancel]                 |
++------------------------------------------+
+Overlay 2: Calibration Settings
+text
++------------------------------------------+
+| ⚙️ Calibration Settings          [✕]    |
++------------------------------------------+
+|  Calibration Method                       |
+|  ┌─────────────────────────────────┐     |
+|  │ ● Tape Measure (Physical)      │     |
+|  │ ○ Known Object (e.g., A4 paper)│     |
+|  │ ○ Manual Entry                 │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Tape Measure Settings                    |
+|  ┌─────────────────────────────────┐     |
+|  │ Reference Distance: [10 cm ▼]  │     |
+|  │ Tolerance:       [±0.5 mm ▼]   │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Calibration Process                      |
+|  ┌─────────────────────────────────┐     |
+|  │ 1. Place tape measure on table  │     |
+|  │ 2. Align with pattern reference │     |
+|  │ 3. Click "Calibrate"           │     |
+|  │ 4. Adjust until distances match│     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Current Calibration                      |
+|  ┌─────────────────────────────────┐     |
+|  │ Pattern Scale: 1.25x           │     |
+|  │ Projected 10cm = 12.5cm actual │     |
+|  │ Accuracy: ±0.2mm               │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  [Start Calibration] [Reset] [Lock]      |
++------------------------------------------+
+Overlay 3: Pattern Manipulation
+text
++------------------------------------------+
+| ✏️ Pattern Controls              [✕]    |
++------------------------------------------+
+|  Zoom Controls                            |
+|  ┌─────────────────────────────────┐     |
+|  │ Zoom: [━━━●━━━━━━━] 125%      │     |
+|  │ [+] [-] [Reset] [Fit to Screen]│     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Rotation                                 |
+|  ┌─────────────────────────────────┐     |
+|  │ Angle: [━━●━━━━━━━━] 0°        │     |
+|  │ [↺ Rotate Left] [↻ Rotate Right]│     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Position                                 |
+|  ┌─────────────────────────────────┐     |
+|  │ X: [━━●━━━━━━━━] 0px           │     |
+|  │ Y: [━━●━━━━━━━━] 0px           │     |
+|  │ [Center] [Reset Position]      │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Lock Controls                            |
+|  ┌─────────────────────────────────┐     |
+|  │ 🔒 Lock Calibration [On]       │     |
+|  │ 🛡️ Lock Position    [Off]      │     |
+|  │ 🔒 Lock Zoom        [Off]      │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  [Apply] [Reset All]                     |
++------------------------------------------+
+Overlay 4: Project Management
+text
++------------------------------------------+
+| 💾 Project Management            [✕]    |
++------------------------------------------+
+|  Save Current Project                     |
+|  ┌─────────────────────────────────┐     |
+|  │ Project Name: [dress_v1    ]   │     |
+|  │ Description: [Evening dress ]   │     |
+|  │ Tags: [dress, evening, v1]    │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  [💾 Save Project] [📂 Save As]         |
+|                                           |
+|  Load Saved Project                       |
+|  ┌─────────────────────────────────┐     |
+|  │ dress_v1       2026-06-19 [Load]│     |
+|  │ dress_v2       2026-06-20 [Load]│     |
+|  │ shirt_v1       2026-06-21 [Load]│     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Export Options                           |
+|  ┌─────────────────────────────────┐     |
+|  │ [📥 Export as PDF]             │     |
+|  │ [📥 Export as SVG]             │     |
+|  │ [📥 Export as Image]           │     |
+|  └─────────────────────────────────┘     |
+|                                           |
+|  Storage Usage: 245MB / 1GB              |
++------------------------------------------+
+Overlay 5: Server Logs
+text
++------------------------------------------+
+| 📊 Server Logs                   [✕]    |
++------------------------------------------+
+|  [🔴 Live] [⏸ Pause] [🗑 Clear] [📥 Export] |
++------------------------------------------+
+|  [2026-06-19 15:30:45] INFO: Pattern loaded: dress.svg |
+|  [2026-06-19 15:30:46] DEBUG: SVG parsed successfully |
+|  [2026-06-19 15:30:47] INFO: Calibration started      |
+|  [2026-06-19 15:30:48] DEBUG: Scale factor: 1.25x     |
+|  [2026-06-19 15:30:49] WARN: Calibration tolerance: 0.3mm|
+|  [2026-06-19 15:30:50] INFO: Calibration locked       |
+|  [2026-06-19 15:30:51] DEBUG: Project saved: dress_v1 |
+|  [2026-06-19 15:30:52] INFO: Project export started   |
+|                                           |
+|  System Information:                     |
+|  ┌─────────────────────────────────┐     |
+|  │ Projector Resolution: 1920x1080│     |
+|  │ Current Scale: 1.25x           │     |
+|  │ Pattern Size: 1200x800px       │     |
+|  │ Table Area: 120x80cm           │     |
+|  └─────────────────────────────────┘     |
++------------------------------------------+
+🔧 Technical Requirements
+Backend Architecture
+Deno.js Server
+typescript
+// Project structure
+src/
+├── server/
+│   ├── main.ts              # Entry point
+│   ├── config.ts            # Configuration management
+│   ├── websocket.ts         # WebSocket handlers
+│   └── api/
+│       ├── patterns.ts      # Pattern upload/management
+│       ├── calibration.ts   # Calibration endpoints
+│       ├── projects.ts      # Project management
+│       └── logs.ts          # Log endpoints
+├── pattern/
+│   ├── parser.ts            # SVG/PDF parsing
+│   ├── renderer.ts          # Pattern rendering
+│   └── processor.ts         # Pattern processing
+├── calibration/
+│   ├── manager.ts           # Calibration logic
+│   └── scale.ts            # Scale calculations
+├── storage/
+│   ├── projects.ts          # Project storage
+│   └── files.ts            # File management
+└── utils/
+    ├── logger.ts            # Logging system
+    └── svg.ts              # SVG utilities
+Pattern Processing
+Supported Formats
+typescript
+// src/pattern/parser.ts
+export interface PatternFile {
+    id: string;
+    name: string;
+    format: 'svg' | 'pdf' | 'dxf' | 'ai';
+    size: number;
+    data: ArrayBuffer;
+}
+
+export interface PatternData {
+    id: string;
+    name: string;
+    width: number;          // In pixels
+    height: number;         // In pixels
+    scale: number;          // Current scale factor
+    rotation: number;       // In degrees
+    position: { x: number; y: number };
+    calibration: {
+        referenceDistance: number;  // In cm
+        scaleFactor: number;        // Current scale factor
+        locked: boolean;
+        accuracy: number;           // In mm
+    };
+    metadata: {
+        originalWidth: number;      // Original pattern size in pixels
+        originalHeight: number;
+        physicalWidth: number;      // Physical pattern size in cm
+        physicalHeight: number;
+    };
+}
+Calibration Logic
+typescript
+// src/calibration/manager.ts
+export class CalibrationManager {
+    private patternScale: number = 1.0;
+    private referenceDistance: number = 10; // cm
+    private tolerance: number = 0.5; // mm
+    private locked: boolean = false;
+    
+    /**
+     * Calibrate pattern to match physical tape measure
+     * @param projectedDistance - Distance on projected pattern in pixels
+     * @param actualDistance - Actual distance on table in cm
+     */
+    calibrate(projectedDistance: number, actualDistance: number): number {
+        if (this.locked) {
+            throw new Error('Calibration is locked');
+        }
+        
+        const newScale = (actualDistance / projectedDistance) * this.patternScale;
+        this.patternScale = newScale;
+        
+        // Log calibration
+        console.log(`Calibrated: ${projectedDistance}px = ${actualDistance}cm`);
+        console.log(`New scale: ${newScale.toFixed(3)}x`);
+        
+        return newScale;
+    }
+    
+    lock(): void {
+        this.locked = true;
+        console.log('Calibration locked');
+    }
+    
+    unlock(): void {
+        this.locked = false;
+        console.log('Calibration unlocked');
+    }
+    
+    getCalibrationStatus(): CalibrationStatus {
+        return {
+            scale: this.patternScale,
+            referenceDistance: this.referenceDistance,
+            locked: this.locked,
+            accuracy: this.calculateAccuracy()
+        };
+    }
+    
+    private calculateAccuracy(): number {
+        // Calculate accuracy based on current scale
+        // Returns accuracy in mm
+        return 0.2; // Placeholder
+    }
+}
+SVG Processing
+typescript
+// src/pattern/processor.ts
+import { DOMParser } from "https://deno.land/x/deno_dom/deno-dom-wasm.ts";
+
+export class SVGProcessor {
+    async parseSVG(data: string): Promise<PatternData> {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(data, 'text/html');
+        
+        // Extract pattern dimensions
+        const svgElement = doc.querySelector('svg');
+        const width = svgElement?.getAttribute('width') || '0';
+        const height = svgElement?.getAttribute('height') || '0';
+        
+        // Parse pattern content
+        const patternData: PatternData = {
+            // ... extract pattern data
+        };
+        
+        return patternData;
+    }
+    
+    async generateSVG(data: PatternData): Promise<string> {
+        // Generate SVG with current scale and transformations
+        const svg = `
+            <svg width="${data.width}" height="${data.height}" 
+                 transform="scale(${data.scale}) rotate(${data.rotation}) translate(${data.position.x}, ${data.position.y})">
+                ${data.content}
+            </svg>
+        `;
+        return svg;
+    }
+}
+🔌 API Endpoints
+Pattern Management
+typescript
+POST /api/pattern/upload
+Content-Type: multipart/form-data
+{
+    file: File,  // SVG, PDF, DXF, or AI
+    name: string,
+    metadata: {
+        description?: string,
+        tags?: string[]
+    }
+}
+
+GET /api/pattern/:id
+Returns: Pattern data with current transformations
+
+POST /api/pattern/:id/scale
+{
+    scale: number,
+    referenceDistance: number  // In cm
+}
+
+POST /api/pattern/:id/calibrate
+{
+    projectedDistance: number,  // In pixels
+    actualDistance: number      // In cm
+}
+
+POST /api/pattern/:id/lock
+{
+    locked: boolean,
+    lockType: 'calibration' | 'position' | 'zoom' | 'all'
+}
+
+PUT /api/pattern/:id
+{
+    scale?: number,
+    rotation?: number,
+    position?: { x: number, y: number },
+    calibration?: CalibrationData
+}
+Project Management
+typescript
+POST /api/project/save
+{
+    name: string,
+    description?: string,
+    tags?: string[],
+    patternId: string,
+    settings: {
+        calibration: CalibrationData,
+        transformations: TransformData,
+        overlay: OverlayData
+    }
+}
+
+GET /api/project/list
+Returns: [{ id, name, date, tags, preview }]
+
+GET /api/project/:id
+Returns: Full project data including pattern
+
+DELETE /api/project/:id
+
+POST /api/project/export
+{
+    projectId: string,
+    format: 'pdf' | 'svg' | 'png' | 'jpg'
+}
+WebSocket Events
+typescript
+// WebSocket Protocol
+interface WSMessage {
+    type: 'calibration' | 'pattern' | 'status' | 'error';
+    payload: any;
+    timestamp: number;
+}
+
+// Events
+→ Calibration:update      // Scale factor updated
+→ Pattern:loaded          // New pattern loaded
+→ Pattern:transformed     // Transformation applied
+→ Status:updated          // System status update
+→ Error:occurred          // Error notification
+🎨 UI/UX Requirements
+Design System
+Dark theme optimized for projection environments
+
+High contrast for visibility
+
+Large controls for touch/pointer interaction
+
+Color palette:
+
+Primary: #00d4ff (cyan)
+
+Background: #1a1a2e (dark)
+
+Surface: #16213e
+
+Success: #00b894 (green)
+
+Error: #e17055 (red)
+
+Warning: #fdcb6e (yellow)
+
+Pattern: #ffffff (white)
+
+Pattern Highlight: #00d4ff (cyan)
+
+Font: System fonts (no external font loading)
+
+Icons: Unicode symbols or SVG icons inline
+
+Responsive Breakpoints
+Projector: > 1920x1080 (full screen)
+
+Desktop: > 1024px
+
+Tablet: 768-1024px
+
+Mobile: < 768px
+
+Accessibility
+ARIA labels on all interactive elements
+
+Keyboard navigation support
+
+Focus management for overlays
+
+Color contrast compliance (WCAG AA)
+
+Touch-friendly controls (minimum 44x44px)
+
+💾 Project Storage Format
+JSON Structure
+json
+{
+    "id": "project_2026-06-19_153045",
+    "name": "dress_v1",
+    "description": "Evening dress pattern",
+    "tags": ["dress", "evening", "v1"],
+    "created": "2026-06-19T15:30:45Z",
+    "modified": "2026-06-19T16:45:12Z",
+    "pattern": {
+        "id": "pattern_123",
+        "name": "dress_pattern.svg",
+        "format": "svg",
+        "width": 1200,
+        "height": 800,
+        "scale": 1.25,
+        "rotation": 0,
+        "position": { "x": 0, "y": 0 },
+        "calibration": {
+            "referenceDistance": 10,
+            "scaleFactor": 1.25,
+            "locked": true,
+            "accuracy": 0.2
+        },
+        "metadata": {
+            "originalWidth": 1200,
+            "originalHeight": 800,
+            "physicalWidth": 45,
+            "physicalHeight": 30
+        }
+    },
+    "settings": {
+        "grid": {
+            "enabled": true,
+            "size": 10,
+            "color": "#333333"
+        },
+        "overlay": {
+            "showLabels": true,
+            "showScale": true,
+            "showCalibrationLine": true
+        }
+    },
+    "files": {
+        "pattern": "patterns/dress_pattern.svg",
+        "preview": "thumbnails/dress_v1.jpg"
+    }
+}
+🚀 Installation & Setup
+Auto-Installation with deno task start
+typescript
+// tasks/install.ts
+export async function installDependencies() {
+    console.log('🔧 Installing required dependencies...');
+    
+    // Check and install ImageMagick for SVG/PDF processing
+    const magickInstalled = await checkCommand('convert');
+    if (!magickInstalled) {
+        console.log('📦 Installing ImageMagick...');
+        await installImageMagick();
+    }
+    
+    // Check and install librsvg for SVG rendering
+    const rsvgInstalled = await checkCommand('rsvg-convert');
+    if (!rsvgInstalled) {
+        console.log('📦 Installing librsvg...');
+        await installRsvg();
+    }
+    
+    // Install Deno dependencies
+    console.log('📦 Installing Deno dependencies...');
+    await installDenoDeps();
+    
+    console.log('✅ All dependencies installed!');
+}
+
+async function installImageMagick() {
+    const os = Deno.build.os;
+    switch(os) {
+        case 'linux':
+            await exec('sudo apt update && sudo apt install -y imagemagick');
+            break;
+        case 'darwin':
+            await exec('brew install imagemagick');
+            break;
+        case 'windows':
+            await exec('choco install imagemagick');
+            break;
+    }
+}
+
+async function installRsvg() {
+    if (Deno.build.os === 'linux') {
+        await exec('sudo apt install -y librsvg2-bin');
+    } else if (Deno.build.os === 'darwin') {
+        await exec('brew install librsvg');
+    }
+}
+deno.json Configuration
+json
+{
+  "tasks": {
+    "start": "deno run --allow-all tasks/install.ts && deno run --allow-all main.ts",
+    "dev": "deno run --allow-all --unstable --watch main.ts",
+    "build": "deno compile --allow-all main.ts",
+    "test": "deno test --allow-all",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "imports": {
+    "std/": "https://deno.land/std@0.208.0/"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "dom"],
+    "strict": true
+  }
+}
+📦 Deployment Requirements
+Docker Container
+dockerfile
+# Dockerfile
+FROM denoland/deno:alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    imagemagick \
+    librsvg \
+    libxml2 \
+    libxslt \
+    fontconfig
+
+# Copy application
+WORKDIR /app
+COPY . .
+
+# Cache Deno dependencies
+RUN deno cache main.ts
+
+# Create storage directories
+RUN mkdir -p /app/storage/patterns /app/storage/projects /app/storage/thumbnails
+
+# Expose ports
+EXPOSE 8080
+
+# Start application
+CMD ["deno", "task", "start"]
+Docker Compose
+yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  pattern-projector:
+    build: .
+    container_name: pattern-projector
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./storage:/app/storage
+    environment:
+      - DENO_ENV=production
+      - STORAGE_PATH=/app/storage
+      - PATTERN_PATH=/app/storage/patterns
+      - PROJECT_PATH=/app/storage/projects
+    restart: unless-stopped
+🚀 Quick Start Commands
+bash
+# Start the application (auto-installs dependencies)
+deno task start
+
+# Development mode with hot reload
+deno task dev
+
+# Build production version
+deno task build
+
+# Run tests
+deno task test
+
+# Format and lint
+deno task fmt
+deno task lint
+
+# CLI Commands
+deno run --allow-all cli.ts load --file pattern.svg
+deno run --allow-all cli.ts calibrate --projected 100 --actual 10
+deno run --allow-all cli.ts save --name "dress_v1"
+deno run --allow-all cli.ts export --format pdf --output pattern.pdf
+📊 Success Criteria
+✅ Upload and display SVG/PDF patterns
+
+✅ Calibrate projection using physical tape measure
+
+✅ Lock calibration to prevent accidental changes
+
+✅ Save/load projects (JSON + files)
+
+✅ Responsive and touch-friendly UI
+
+✅ All overlays draggable and resizable
+
+✅ deno task start installs all dependencies automatically
+
+✅ Pattern transformations (scale, rotate, position)
+
+✅ Project export (PDF, SVG, Image)
+
+✅ Comprehensive logging and monitoring
+
+✅ Zero production crashes in first month
+
+✅ All tests passing in CI/CD
+
+📝 Developer Handoff Checklist
+Backend Team
+Set up Deno.js project structure
+
+Implement SVG/PDF parsing
+
+Create pattern management API
+
+Implement calibration logic
+
+Build project storage (JSON + files)
+
+Create WebSocket server for real-time updates
+
+Implement project export functionality
+
+Add logging system
+
+Write unit tests and integration tests
+
+Implement deno task start auto-installation
+
+Frontend Team
+Create vue js single-page application
+
+Implement draggable/resizable overlays
+
+Build pattern canvas/SVG renderer
+
+Add pattern upload with drag and drop
+
+Implement calibration UI
+
+Create pattern manipulation controls
+
+Build project management UI
+
+Add dark theme optimized for projection
+
+Implement touch-friendly controls
+
+Integrate with backend APIs
+
+DevOps Team
+Set up Docker containerization
+
+Configure CI/CD pipeline
+
+Deploy to staging environment
+
+Set up monitoring and alerts
+
+Configure SSL certificates
+
+Create backup strategy
+
+Set up log aggregation
+
+QA Team
+Test with various pattern formats
+
+Test calibration accuracy
+
+Test lock/unlock functionality
+
+Test project save/load
+
+Cross-browser testing
+
+Performance testing
+
+Test all UI interactions
+
+Verify deno task start installation
+
+📚 Documentation Requirements
+User Manual (Calibration guide, pattern loading)
+
+API Documentation (OpenAPI/Swagger)
+
+Setup Guide (Installation & Configuration)
+
+Troubleshooting Guide (Common issues)
+
+Developer Guide (How to extend/modify)
+
+Pattern Format Guide (Supported formats, best practices)
+
+Calibration Guide (Step-by-step calibration process)
+
+⏱️ Timeline Estimate
+Phase	Duration	Deliverables
+Setup & Architecture	1 week	Project structure, dependencies
+Pattern Processing	2 weeks	SVG/PDF parsing, rendering
+Calibration System	2 weeks	Calibration logic, UI
+Frontend Development	3 weeks	UI, overlays, pattern manipulation
+Project Management	2 weeks	Save/load, export
+Testing & QA	2 weeks	All tests, bug fixes
+Deployment	1 week	Docker, CI/CD, monitoring
+Total	13 weeks	Production-ready application
+🎯 Special Considerations
+Calibration Accuracy
+The calibration must be accurate to within ±0.5mm
+
+Consider using a calibration grid or known reference objects
+
+Provide visual feedback during calibration (color changes, alerts)
+
+Projection Environment
+Dark theme is essential for projection visibility
+
+High contrast patterns (white on dark background)
+
+Consider projector resolution and aspect ratio
+
+Pattern Formats
+SVG: Preferred format (scalable, editable)
+
+PDF: Common format for sewing patterns
+
+DXF: Industry standard for CAD patterns
+
+AI: Adobe Illustrator format
+
+Locking Mechanism
+Prevent accidental clicks from changing calibration
+
+Visual indicator when locked (padlock icon, color change)
+
+Require confirmation to unlock
+
+🔒 Security Requirements
+Authentication: Basic auth or API keys
+
+HTTPS: Required for production
+
+File Validation: Validate uploaded files (format, size)
+
+Input Validation: All API inputs sanitized
+
+Rate Limiting: Prevent abuse
+
+Permissions: Least-privilege principle
+
+Logging: Audit trail of all actions
+
+File Storage: Secure file storage with proper permissions
